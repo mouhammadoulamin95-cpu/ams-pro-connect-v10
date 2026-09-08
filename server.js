@@ -1,0 +1,18 @@
+const express=require("express"),http=require("http"),{Server}=require("socket.io"),Database=require("better-sqlite3"),path=require("path");
+const app=express(),server=http.createServer(app),io=new Server(server);
+const db=new Database("amspro.db");
+db.exec(`CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,phone TEXT UNIQUE NOT NULL,password TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'client');
+CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY AUTOINCREMENT,client_id INTEGER,sender_role TEXT NOT NULL,body TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS projects(id INTEGER PRIMARY KEY AUTOINCREMENT,client_id INTEGER,title TEXT NOT NULL,stage TEXT NOT NULL DEFAULT 'Prospect',total INTEGER DEFAULT 0,paid INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY AUTOINCREMENT,client_id INTEGER,number TEXT,type TEXT,total INTEGER,status TEXT,date TEXT);`);
+const count=db.prepare("SELECT COUNT(*) c FROM users WHERE role='admin'").get().c;
+if(!count) db.prepare("INSERT INTO users(name,phone,password,role) VALUES(?,?,?,?)").run("AMS Pro","+237680296346","1234","admin");
+app.use(express.json()); app.use(express.static(path.join(__dirname,"public")));
+app.post("/api/register",(req,res)=>{try{let {name,phone,password}=req.body;if(!name||!phone||!password)return res.status(400).json({error:"Champs manquants"});let x=db.prepare("INSERT INTO users(name,phone,password,role) VALUES(?,?,?,'client')").run(name,phone,password);res.json({id:x.lastInsertRowid,name,phone,role:"client"})}catch(e){res.status(409).json({error:"Ce numéro existe déjà"})}});
+app.post("/api/login",(req,res)=>{let u=db.prepare("SELECT id,name,phone,role FROM users WHERE phone=? AND password=?").get(req.body.phone,req.body.password);if(!u)return res.status(401).json({error:"Identifiants incorrects"});res.json(u)});
+app.get("/api/clients",(req,res)=>res.json(db.prepare("SELECT id,name,phone FROM users WHERE role='client' ORDER BY id DESC").all()));
+app.get("/api/messages/:clientId",(req,res)=>res.json(db.prepare("SELECT * FROM messages WHERE client_id=? ORDER BY id ASC").all(req.params.clientId)));
+app.post("/api/messages",(req,res)=>{let {clientId,senderRole,body}=req.body;if(!body)return res.status(400).json({error:"Message vide"});let now=new Date().toISOString();let x=db.prepare("INSERT INTO messages(client_id,sender_role,body,created_at) VALUES(?,?,?,?)").run(clientId,senderRole,body,now);let msg={id:x.lastInsertRowid,client_id:+clientId,sender_role:senderRole,body,created_at:now};io.to("client_"+clientId).emit("message",msg);res.json(msg)});
+io.on("connection",s=>{s.on("join",id=>s.join("client_"+id));});
+app.get("*",(req,res)=>res.sendFile(path.join(__dirname,"public","index.html")));
+server.listen(process.env.PORT||3000,()=>console.log("AMS Pro Connect V10 online sur le port "+(process.env.PORT||3000)));
