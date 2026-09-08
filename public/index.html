@@ -1,1 +1,279 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMS Pro Connect V10</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-100 font-sans min-h-screen flex flex-col">
+
+    <!-- ÉCRAN DE CONNEXION / INSCRIPTION -->
+    <div id="auth-screen" class="flex-1 flex items-center justify-center p-4">
+        <div class="bg-white p-6 rounded-2xl shadow-xl w-full max-w-md border border-slate-200">
+            <div class="text-center mb-6">
+                <div class="bg-blue-600 text-white w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold shadow-md">
+                    AMS
+                </div>
+                <h1 class="text-2xl font-bold text-slate-800">AMS Pro Connect</h1>
+                <p class="text-sm text-slate-500">Plateforme de communication & support</p>
+            </div>
+
+            <!-- Onglets Connexion / Inscription -->
+            <div class="flex border-b border-slate-200 mb-6">
+                <button id="tab-login" onclick="switchAuthTab('login')" class="flex-1 pb-2 text-center font-semibold text-blue-600 border-b-2 border-blue-600">Connexion</button>
+                <button id="tab-register" onclick="switchAuthTab('register')" class="flex-1 pb-2 text-center font-semibold text-slate-400">Inscription</button>
+            </div>
+
+            <!-- Formulaire Connexion -->
+            <form id="form-login" onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Téléphone</label>
+                    <input type="text" id="login-phone" placeholder="ex: +237680296346" required class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Mot de passe</label>
+                    <input type="password" id="login-password" placeholder="••••••••" required class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg shadow-md transition duration-200">Se connecter</button>
+            </form>
+
+            <!-- Formulaire Inscription -->
+            <form id="form-register" onsubmit="handleRegister(event)" class="space-y-4 hidden">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Nom complet</label>
+                    <input type="text" id="reg-name" placeholder="Votre nom" required class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Téléphone</label>
+                    <input type="text" id="reg-phone" placeholder="ex: +2376xxxxxxx" required class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Mot de passe</label>
+                    <input type="password" id="reg-password" placeholder="••••••••" required class="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg shadow-md transition duration-200">Créer mon compte</button>
+            </form>
+
+            <div id="auth-error" class="mt-4 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg hidden text-center"></div>
+        </div>
+    </div>
+
+    <!-- INTERFACE PRINCIPALE (CHAT) -->
+    <div id="app-screen" class="flex-1 flex flex-col hidden h-screen">
+        <!-- Barre supérieure -->
+        <header class="bg-slate-800 text-white px-4 py-3 flex items-center justify-between shadow-md">
+            <div class="flex items-center space-x-3">
+                <div class="bg-blue-600 w-10 h-10 rounded-full flex items-center justify-center font-bold">AMS</div>
+                <div>
+                    <h2 id="user-display-name" class="font-bold text-sm">Utilisateur</h2>
+                    <span id="user-role-badge" class="text-xs bg-slate-700 px-2 py-0.5 rounded text-blue-300">Client</span>
+                </div>
+            </div>
+            <button onclick="logout()" class="text-slate-300 hover:text-white text-sm bg-slate-700 px-3 py-1.5 rounded-lg flex items-center space-x-1">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Déconnexion</span>
+            </button>
+        </header>
+
+        <!-- Zone de messagerie -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Liste des conversations (Visible pour l'admin) -->
+            <div id="conversations-sidebar" class="w-1/3 bg-white border-r border-slate-200 flex flex-col hidden">
+                <div class="p-3 bg-slate-50 border-b border-slate-200 font-semibold text-slate-700 text-sm">
+                    Clients & Discussions
+                </div>
+                <div id="conversations-list" class="flex-1 overflow-y-auto divide-y divide-slate-100">
+                    <!-- Généré dynamiquement -->
+                </div>
+            </div>
+
+            <!-- Chat principal -->
+            <div class="flex-1 flex flex-col bg-slate-50">
+                <div id="chat-header" class="p-3 bg-white border-b border-slate-200 text-sm font-semibold text-slate-700">
+                    Discussion en direct
+                </div>
+                
+                <!-- Zone des messages -->
+                <div id="messages-container" class="flex-1 p-4 overflow-y-auto space-y-3">
+                    <!-- Messages injectés ici -->
+                </div>
+
+                <!-- Formulaire d'envoi -->
+                <form id="chat-form" onsubmit="sendMessage(event)" class="p-3 bg-white border-t border-slate-200 flex items-center space-x-2">
+                    <input type="text" id="message-input" placeholder="Écrivez votre message..." required class="flex-1 px-4 py-2.5 rounded-full border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white w-10 h-10 rounded-full flex items-center justify-center shadow-md">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPT APPLICATION -->
+    <script>
+        const socket = io();
+        let currentUser = null;
+        let activeChatUserId = null;
+
+        function switchAuthTab(tab) {
+            const loginForm = document.getElementById('form-login');
+            const regForm = document.getElementById('form-register');
+            const tabLogin = document.getElementById('tab-login');
+            const tabReg = document.getElementById('tab-register');
+            
+            if (tab === 'login') {
+                loginForm.classList.remove('hidden');
+                regForm.classList.add('hidden');
+                tabLogin.className = "flex-1 pb-2 text-center font-semibold text-blue-600 border-b-2 border-blue-600";
+                tabReg.className = "flex-1 pb-2 text-center font-semibold text-slate-400";
+            } else {
+                loginForm.classList.add('hidden');
+                regForm.classList.remove('hidden');
+                tabReg.className = "flex-1 pb-2 text-center font-semibold text-blue-600 border-b-2 border-blue-600";
+                tabLogin.className = "flex-1 pb-2 text-center font-semibold text-slate-400";
+            }
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const phone = document.getElementById('login-phone').value;
+            const password = document.getElementById('login-password').value;
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone, password })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    initApp(data.user);
+                } else {
+                    showError(data.error || 'Erreur de connexion');
+                }
+            } catch (err) {
+                showError('Impossible de contacter le serveur');
+            }
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            const name = document.getElementById('reg-name').value;
+            const phone = document.getElementById('reg-phone').value;
+            const password = document.getElementById('reg-password').value;
+
+            try {
+                const res = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, phone, password })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    initApp(data.user);
+                } else {
+                    showError(data.error || "Erreur d'inscription");
+                }
+            } catch (err) {
+                showError('Impossible de contacter le serveur');
+            }
+        }
+
+        function initApp(user) {
+            currentUser = user;
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('app-screen').classList.remove('hidden');
+            document.getElementById('user-display-name').textContent = user.name || user.phone;
+            document.getElementById('user-role-badge').textContent = user.role === 'admin' ? 'Administrateur' : 'Client';
+
+            socket.emit('join', { userId: user.id, role: user.role });
+
+            if (user.role === 'admin') {
+                document.getElementById('conversations-sidebar').classList.remove('hidden');
+                loadConversations();
+            }
+
+            loadMessages();
+        }
+
+        function showError(msg) {
+            const errDiv = document.getElementById('auth-error');
+            errDiv.textContent = msg;
+            errDiv.classList.remove('hidden');
+        }
+
+        function logout() {
+            location.reload();
+        }
+
+        async function loadMessages() {
+            const res = await fetch(`/api/messages?userId=${currentUser.id}`);
+            const messages = await res.json();
+            renderMessages(messages);
+        }
+
+        function renderMessages(messages) {
+            const container = document.getElementById('messages-container');
+            container.innerHTML = '';
+            messages.forEach(msg => {
+                const isMe = msg.sender_id === currentUser.id;
+                const div = document.createElement('div');
+                div.className = `flex ${isMe ? 'justify-end' : 'justify-start'}`;
+                div.innerHTML = `
+                    <div class="max-w-xs md:max-w-md px-4 py-2 rounded-2xl text-sm ${isMe ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none shadow-sm'}">
+                        ${msg.text}
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function sendMessage(e) {
+            e.preventDefault();
+            const input = document.getElementById('message-input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            const msgData = {
+                senderId: currentUser.id,
+                receiverId: currentUser.role === 'admin' ? activeChatUserId : 'admin',
+                text
+            };
+
+            socket.emit('sendMessage', msgData);
+            input.value = '';
+        }
+
+        socket.on('receiveMessage', (msg) => {
+            if (currentUser && (msg.sender_id === currentUser.id || msg.receiver_id === currentUser.id)) {
+                loadMessages();
+            }
+        });
+
+        async function loadConversations() {
+            const res = await fetch('/api/conversations');
+            const users = await res.json();
+            const list = document.getElementById('conversations-list');
+            list.innerHTML = '';
+            users.forEach(u => {
+                const item = document.createElement('div');
+                item.className = 'p-3 hover:bg-slate-100 cursor-pointer text-sm text-slate-700 flex justify-between items-center';
+                item.innerHTML = `<div><div class="font-semibold">${u.name || u.phone}</div><div class="text-xs text-slate-400">${u.phone}</div></div>`;
+                item.onclick = () => {
+                    activeChatUserId = u.id;
+                    document.getElementById('chat-header').textContent = `Chat avec ${u.name || u.phone}`;
+                    loadMessages();
+                };
+                list.appendChild(item);
+            });
+        }
+    </script>
+</body>
+</html>
 
